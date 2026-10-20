@@ -4,14 +4,15 @@
  * Lagu offline tersimpan persisten di IndexedDB dan TIDAK PERNAH terhapus saat pembaruan tampilan.
  */
 
-const CACHE_NAME = 'upacara-ui-v16';
+const CACHE_NAME = 'upacara-ui-v21';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './style.css?v=16',
-  './app.js?v=16',
-  './audio-engine.js?v=16',
-  './db.js?v=16',
+  './logo.jpg',
+  './style.css?v=21',
+  './app.js?v=21',
+  './audio-engine.js?v=21',
+  './db.js?v=21',
   './manifest.json'
 ];
 

@@ -14,6 +14,8 @@
  * 2. Real-time Transpose (-12 s.d. +12 Semitone)
  * 3. Master Volume & Analyser Visualizer
  * 4. Pemutaran MP3, WAV, OGG, & MIDI
+ * 5. High-Precision Lookahead Web Audio Scheduler (Zero-Jitter Clock)
+ * 6. Concert Hall Acoustic Reverb & Exponential Release Decay Smoothing
  */
 
 const NOTE_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -38,6 +40,11 @@ class CeremonyAudioEngine {
     this.analyser = null;
     this.gainNode = null;
 
+    // Reverb & Ambience Nodes (Karakter Aula / Hall KoorSMK)
+    this.reverbConvolver = null;
+    this.reverbSendGain = null;
+    this.dryGain = null;
+
     // Status state
     this.currentSemitones = 0;
     this.currentPitch = 1.0;
@@ -47,13 +54,16 @@ class CeremonyAudioEngine {
     this.isPlaying = false;
     this.isMidi = false;
 
-    // MIDI Synth State
+    // High-Precision MIDI Synth State (Hardware Lookahead Scheduler)
     this.midiEvents = [];
-    this.midiTimeouts = [];
     this.activeMidiVoices = [];
     this.midiDuration = 0;
     this.midiCurrentTime = 0;
-    this.midiInterval = null;
+    this.playbackStartAudioCtxTime = 0;
+    this.playbackStartOffset = 0;
+    this.nextMidiEventIndex = 0;
+    this.midiSchedulerTimer = null;
+    this.midiProgressTimer = null;
 
     // SoundFont Caches
     this.loadedSoundfonts = new Set();
@@ -97,6 +107,20 @@ class CeremonyAudioEngine {
       this.eqHigh.frequency.value = 3500;
       this.eqHigh.gain.value = 0;
 
+      // Reverb Convolver & Mixer (Karakter Hall Reverb Megah layaknya Android KoorSMK / Roland GM)
+      this.reverbConvolver = this.audioCtx.createConvolver();
+      this.reverbConvolver.buffer = this.buildImpulseResponse(2.0, 2.5);
+
+      this.reverbSendGain = this.audioCtx.createGain();
+      this.reverbSendGain.gain.value = 0.22; // Kehangatan ruang gema 22%
+
+      this.dryGain = this.audioCtx.createGain();
+      this.dryGain.gain.value = 0.85; // Sinyal utama jernih
+
+      this.reverbSendGain.connect(this.reverbConvolver);
+      this.reverbConvolver.connect(this.eqLow);
+      this.dryGain.connect(this.eqLow);
+
       // Analyser Node untuk visualizer audio
       this.analyser = this.audioCtx.createAnalyser();
       this.analyser.fftSize = 64;
@@ -124,6 +148,22 @@ class CeremonyAudioEngine {
     if (this.audioCtx.state === 'suspended') {
       this.audioCtx.resume();
     }
+  }
+
+  buildImpulseResponse(duration = 2.0, decay = 2.5) {
+    const sampleRate = (this.audioCtx && this.audioCtx.sampleRate) ? this.audioCtx.sampleRate : 44100;
+    const length = Math.floor(sampleRate * duration);
+    const impulse = (this.audioCtx || new (window.AudioContext || window.webkitAudioContext)()).createBuffer(2, length, sampleRate);
+    const left = impulse.getChannelData(0);
+    const right = impulse.getChannelData(1);
+
+    for (let i = 0; i < length; i++) {
+      const n = i / length;
+      const env = Math.pow(1 - n, decay);
+      left[i] = (Math.random() * 2 - 1) * env;
+      right[i] = (Math.random() * 2 - 1) * env;
+    }
+    return impulse;
   }
 
   initAudioElementEvents() {
@@ -200,6 +240,15 @@ class CeremonyAudioEngine {
         this.audioElement.webkitPreservesPitch = false;
       }
       this.audioElement.playbackRate = this.currentPitch;
+    } else {
+      if (this.isPlaying && this.isMidi && this.currentSong) {
+        const curTime = this.midiCurrentTime;
+        const needed = this.getInstrumentsForMode(this.currentInstrumentMode);
+        this.stopMidi();
+        this.predecodeMidiNotes(needed).then(() => {
+          this.playMidiEvents(curTime);
+        });
+      }
     }
     return {
       semitones: this.currentSemitones,
@@ -224,10 +273,11 @@ class CeremonyAudioEngine {
       await this.loadSoundfont(inst);
     }
 
-    // Jika sedang memutar MIDI, re-trigger nada
+    // Jika sedang memutar MIDI, re-trigger nada dengan instrumen baru
     if (this.isPlaying && this.isMidi && this.currentSong) {
       const curTime = this.midiCurrentTime;
       this.stopMidi();
+      await this.predecodeMidiNotes(needed);
       this.playMidiEvents(curTime);
     }
   }
@@ -242,7 +292,6 @@ class CeremonyAudioEngine {
     }
 
     return new Promise((resolve) => {
-      // Periksa apakah script sudah ada
       const existing = document.querySelector(`script[data-soundfont="${instName}"]`);
       if (existing && window.MIDI && window.MIDI.Soundfont && window.MIDI.Soundfont[instName]) {
         this.loadedSoundfonts.add(instName);
@@ -267,7 +316,6 @@ class CeremonyAudioEngine {
   }
 
   async preloadCeremonySoundfonts() {
-    // Muat instrumen upacara paling umum: Grand Piano, Strings, Trumpet, Marching Brass
     const primary = ['acoustic_grand_piano', 'string_ensemble_1', 'brass_section', 'trumpet'];
     for (const inst of primary) {
       await this.loadSoundfont(inst);
@@ -324,7 +372,6 @@ class CeremonyAudioEngine {
         return [{ inst: 'trumpet', vol: 1.0 }];
 
       case '-1': // 👑 MEGAH (STRINGS + BRASS)
-        // Harmoni orkestra megah: perpaduan Strings luas dengan terompet/brass bertenaga
         if (isMelody) {
           return [
             { inst: 'string_ensemble_1', vol: 0.8 },
@@ -338,7 +385,6 @@ class CeremonyAudioEngine {
         }
 
       case '-2': // 🥁 MARCHING BRASS (KORSIK LAPANGAN)
-        // Karakter korps musik upacara lapangan: Terompet melodi tajam + Seksi Brass pengiring
         if (isMelody) {
           return [
             { inst: 'trumpet', vol: 0.95 },
@@ -351,7 +397,6 @@ class CeremonyAudioEngine {
         }
 
       case '-3': // 🏛️ SIMFONI UPACARA (FRENCH HORN & STRINGS)
-        // Karakter simfoni megah klasik: French Horn berwibawa berpadu gesekan Strings
         if (isMelody) {
           return [
             { inst: 'french_horn', vol: 0.85 },
@@ -406,12 +451,47 @@ class CeremonyAudioEngine {
         bytes[i] = binaryStr.charCodeAt(i);
       }
 
+      this.ensureAudioContext();
       const audioBuffer = await this.audioCtx.decodeAudioData(bytes.buffer);
       this.audioBufferCache.set(cacheKey, audioBuffer);
       return audioBuffer;
     } catch (e) {
       console.warn(`Gagal decode sampel audio untuk ${cacheKey}:`, e);
       return null;
+    }
+  }
+
+  /**
+   * Pre-decode seluruh sampel not yang digunakan dalam lagu sebelum pemutaran dimulai
+   * Mencegah stutter dan penundaan not pertama
+   */
+  async predecodeMidiNotes(instruments) {
+    if (!this.audioCtx) return;
+    const uniqueNotes = new Set();
+    for (const evt of this.midiEvents) {
+      if ((evt.type === 'noteOn' || evt.type === 'noteOff') && typeof evt.note === 'number') {
+        const transposedNote = Math.max(21, Math.min(108, evt.note + this.currentSemitones));
+        uniqueNotes.add(transposedNote);
+      }
+    }
+
+    const decodePromises = [];
+    for (const inst of instruments) {
+      for (const note of uniqueNotes) {
+        const noteKey = midiNoteToKeyName(note);
+        const cacheKey = `${inst}_${noteKey}`;
+        if (!this.audioBufferCache.has(cacheKey)) {
+          decodePromises.push(this.getOrDecodeAudioBuffer(inst, noteKey));
+        }
+      }
+    }
+
+    if (decodePromises.length > 0) {
+      try {
+        await Promise.all(decodePromises);
+      } catch (err) {
+        console.warn('Catatan: Beberapa sampel sedang didecode secara bertahap:', err);
+      }
     }
   }
 
@@ -502,7 +582,7 @@ class CeremonyAudioEngine {
   }
 
   // ==========================================
-  // Parser & Pemutar MIDI dengan Sampel Nyata
+  // Parser & Pemutar MIDI dengan High-Precision Engine
   // ==========================================
 
   async playMidiBlob(blob, songInfo) {
@@ -520,6 +600,10 @@ class CeremonyAudioEngine {
 
     const arrayBuffer = await blob.arrayBuffer();
     this.parseAndLoadMidi(arrayBuffer);
+
+    // Pre-decode seluruh sampel not sebelum play
+    await this.predecodeMidiNotes(needed);
+
     this.playMidiEvents(0);
   }
 
@@ -650,24 +734,69 @@ class CeremonyAudioEngine {
     }
   }
 
+  /**
+   * Lookahead Scheduler Berbasis Hardware Audio Clock (Sample-Accurate Timing)
+   * Mengeliminasi jitter setTimeout dan menjadikan pemutaran mulus 100%
+   */
   playMidiEvents(startFromTime = 0) {
     this.stopMidi();
-    this.midiCurrentTime = startFromTime;
+    this.ensureAudioContext();
+
+    this.midiCurrentTime = Math.max(0, startFromTime);
+    this.playbackStartAudioCtxTime = this.audioCtx.currentTime;
+    this.playbackStartOffset = this.midiCurrentTime;
     this.isPlaying = true;
     if (this.onPlayStateChange) this.onPlayStateChange(true);
 
-    this.midiEvents.forEach(evt => {
-      if (evt.time >= startFromTime) {
-        const delayMs = (evt.time - startFromTime) * 1000;
-        const tid = setTimeout(() => {
-          this.executeMidiEvent(evt);
-        }, delayMs);
-        this.midiTimeouts.push(tid);
-      }
-    });
+    // Cari index event pertama yang >= posisi saat ini
+    this.nextMidiEventIndex = 0;
+    while (
+      this.nextMidiEventIndex < this.midiEvents.length &&
+      this.midiEvents[this.nextMidiEventIndex].time < this.midiCurrentTime
+    ) {
+      this.nextMidiEventIndex++;
+    }
 
-    this.midiInterval = setInterval(() => {
-      this.midiCurrentTime += 0.25;
+    // Web Audio Lookahead Engine (Presisi Hardware Zero-Jitter)
+    const scheduleAheadTime = 0.20; // Jadwalkan 200ms ke depan langsung ke hardware audio thread
+    const lookaheadIntervalMs = 25; // Loop scheduler per 25ms
+
+    const scheduleTick = () => {
+      if (!this.isPlaying || !this.isMidi || !this.audioCtx) return;
+
+      const currentCtxTime = this.audioCtx.currentTime;
+      const songPlayTime = (currentCtxTime - this.playbackStartAudioCtxTime) + this.playbackStartOffset;
+      this.midiCurrentTime = songPlayTime;
+
+      const scheduleUntilSongTime = songPlayTime + scheduleAheadTime;
+
+      while (
+        this.nextMidiEventIndex < this.midiEvents.length &&
+        this.midiEvents[this.nextMidiEventIndex].time <= scheduleUntilSongTime
+      ) {
+        const evt = this.midiEvents[this.nextMidiEventIndex];
+        const eventOffset = evt.time - this.playbackStartOffset;
+        const targetCtxTime = Math.max(currentCtxTime, this.playbackStartAudioCtxTime + eventOffset);
+
+        this.executeScheduledMidiEvent(evt, targetCtxTime);
+        this.nextMidiEventIndex++;
+      }
+
+      // Cek apakah lagu telah selesai
+      if (songPlayTime >= this.midiDuration) {
+        this.stopMidi();
+        this.isPlaying = false;
+        if (this.onPlayStateChange) this.onPlayStateChange(false);
+        if (this.onEnded) this.onEnded();
+      }
+    };
+
+    scheduleTick();
+    this.midiSchedulerTimer = setInterval(scheduleTick, lookaheadIntervalMs);
+
+    // Update progress bar UI secara mulus
+    this.midiProgressTimer = setInterval(() => {
+      if (!this.isPlaying || !this.isMidi) return;
       if (this.onTimeUpdate) {
         this.onTimeUpdate({
           currentTime: Math.min(this.midiCurrentTime, this.midiDuration),
@@ -675,55 +804,70 @@ class CeremonyAudioEngine {
           progress: Math.min(100, (this.midiCurrentTime / (this.midiDuration || 1)) * 100)
         });
       }
-
-      if (this.midiCurrentTime >= this.midiDuration) {
-        this.stopMidi();
-        this.isPlaying = false;
-        if (this.onPlayStateChange) this.onPlayStateChange(false);
-        if (this.onEnded) this.onEnded();
-      }
-    }, 250);
+    }, 100);
   }
 
-  executeMidiEvent(evt) {
+  executeScheduledMidiEvent(evt, exactTime) {
+    const transposedNote = Math.max(21, Math.min(108, evt.note + this.currentSemitones));
     if (evt.type === 'noteOn' && evt.velocity > 0) {
-      const transposedNote = Math.max(21, Math.min(108, evt.note + this.currentSemitones));
-      this.triggerMidiVoice(transposedNote, evt.velocity, evt.track, evt.channel);
+      this.triggerMidiVoice(transposedNote, evt.velocity, evt.track, evt.channel, exactTime);
     } else if (evt.type === 'noteOff' || (evt.type === 'noteOn' && evt.velocity === 0)) {
-      const transposedNote = Math.max(21, Math.min(108, evt.note + this.currentSemitones));
-      this.releaseMidiVoice(transposedNote, evt.track, evt.channel);
+      this.releaseMidiVoice(transposedNote, evt.track, evt.channel, exactTime);
     }
   }
 
   /**
-   * Pemicu Suara Sampel Asli SoundFont (Acoustic Grand Piano, Strings, Trumpet, Brass, French Horn, dll.)
-   * Mendukung multi-voicing / dual layering untuk karakter Megah, Marching Brass, & Simfoni
+   * Pemicu Suara Sampel Asli SoundFont dengan Precise Audio Hardware Clock
+   * Menghilangkan klik digital dan mengalirkan sinyal ke Reverb Bus & Master EQ
    */
-  async triggerMidiVoice(midiNote, velocity, trackIndex, channel) {
+  triggerMidiVoice(midiNote, velocity, trackIndex, channel, exactStartTime) {
     if (!this.audioCtx) return;
 
-    // Ambil daftar instrumen/suara untuk nada ini
     const voices = this.getVoicesForEvent(this.currentInstrumentMode, channel, midiNote);
     if (!voices || voices.length === 0) return;
 
     const noteKey = midiNoteToKeyName(midiNote);
-    const now = this.audioCtx.currentTime;
+    const targetTime = Math.max(this.audioCtx.currentTime, exactStartTime || this.audioCtx.currentTime);
     const baseVel = Math.max(0.1, velocity / 127);
 
     for (const vConfig of voices) {
-      const audioBuffer = await this.getOrDecodeAudioBuffer(vConfig.inst, noteKey);
+      const cacheKey = `${vConfig.inst}_${noteKey}`;
+      const audioBuffer = this.audioBufferCache.get(cacheKey);
+
+      // Cek apakah mode adalah Church Organ (Original / 19) atau Simfoni Upacara (-3)
+      const isOriginalClassic = (
+        this.currentInstrumentMode === 'original' ||
+        this.currentInstrumentMode === '19' ||
+        this.currentInstrumentMode === '-3' ||
+        vConfig.inst === 'church_organ'
+      );
+
       if (audioBuffer) {
         const source = this.audioCtx.createBufferSource();
         source.buffer = audioBuffer;
 
         const gain = this.audioCtx.createGain();
         const voiceGain = baseVel * (vConfig.vol || 1.0) * 0.85;
-        gain.gain.setValueAtTime(voiceGain, now);
 
-        source.connect(gain);
-        gain.connect(this.eqLow); // Terhubung ke 3-Band Equalizer
+        if (isOriginalClassic) {
+          // Versi Asli: Attack instan dan tegas, tanpa jeda ramp
+          gain.gain.setValueAtTime(voiceGain, targetTime);
+          source.connect(gain);
+          // Langsung ke EQ tanpa gema buatan (reverb) agar suara organ & brass simfoni tetap jernih dan berwibawa
+          gain.connect(this.eqLow);
+        } else {
+          // Mode lainnya: Soft attack 5ms & Ambience Hall Reverb
+          gain.gain.setValueAtTime(0.0001, targetTime);
+          gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, voiceGain), targetTime + 0.005);
+          source.connect(gain);
 
-        source.start(now);
+          if (this.dryGain) gain.connect(this.dryGain);
+          else gain.connect(this.eqLow);
+
+          if (this.reverbSendGain) gain.connect(this.reverbSendGain);
+        }
+
+        source.start(targetTime);
 
         this.activeMidiVoices.push({
           note: midiNote,
@@ -731,29 +875,39 @@ class CeremonyAudioEngine {
           channel: channel,
           inst: vConfig.inst,
           isBuffer: true,
+          isOriginalClassic,
           source,
-          gain
+          gain,
+          voiceGain,
+          targetTime
         });
       } else {
-        // Fallback synthesizer jika sampel belum siap
+        // Fallback cepat jika sampel belum siap di cache (synthesizer lembut)
         const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
         const osc = this.audioCtx.createOscillator();
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(freq, now);
+        osc.frequency.setValueAtTime(freq, targetTime);
 
         const filter = this.audioCtx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(3200, now);
+        filter.frequency.setValueAtTime(3000, targetTime);
 
         const gain = this.audioCtx.createGain();
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.exponentialRampToValueAtTime(baseVel * 0.25, now + 0.05);
+        gain.gain.setValueAtTime(0.0001, targetTime);
+        gain.gain.exponentialRampToValueAtTime(baseVel * 0.22, targetTime + 0.02);
 
         osc.connect(filter);
         filter.connect(gain);
-        gain.connect(this.eqLow);
 
-        osc.start(now);
+        if (isOriginalClassic) {
+          gain.connect(this.eqLow);
+        } else {
+          if (this.dryGain) gain.connect(this.dryGain);
+          else gain.connect(this.eqLow);
+          if (this.reverbSendGain) gain.connect(this.reverbSendGain);
+        }
+
+        osc.start(targetTime);
 
         this.activeMidiVoices.push({
           note: midiNote,
@@ -761,31 +915,44 @@ class CeremonyAudioEngine {
           channel: channel,
           inst: vConfig.inst,
           isBuffer: false,
+          isOriginalClassic,
           osc,
-          gain
+          gain,
+          voiceGain: baseVel * 0.22,
+          targetTime
         });
       }
     }
   }
 
-  releaseMidiVoice(midiNote, trackIndex, channel) {
+  releaseMidiVoice(midiNote, trackIndex, channel, exactStopTime) {
     if (!this.audioCtx) return;
-    const now = this.audioCtx.currentTime;
+    const targetStop = Math.max(this.audioCtx.currentTime, exactStopTime || this.audioCtx.currentTime);
 
-    // Melepaskan seluruh suara (termasuk layer ganda) tanpa break prematur
     for (let i = this.activeMidiVoices.length - 1; i >= 0; i--) {
       const v = this.activeMidiVoices[i];
       if (v.note === midiNote && v.track === trackIndex && (channel === undefined || v.channel === channel)) {
         if (v.isBuffer) {
-          v.gain.gain.cancelScheduledValues(now);
-          v.gain.gain.setValueAtTime(Math.max(0.001, v.gain.gain.value), now);
-          v.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
-          try { v.source.stop(now + 0.18); } catch (e) {}
+          try {
+            v.gain.gain.cancelScheduledValues(targetStop);
+            v.gain.gain.setValueAtTime(Math.max(0.001, v.voiceGain || 0.5), targetStop);
+            if (v.isOriginalClassic) {
+              // Persis seperti versi sebelumnya: pelepasan 0.15 detik yang tegas & bersih
+              v.gain.gain.exponentialRampToValueAtTime(0.0001, targetStop + 0.15);
+              v.source.stop(targetStop + 0.18);
+            } else {
+              // Mode orkestra lainnya: pelepasan lembut 0.20 detik
+              v.gain.gain.exponentialRampToValueAtTime(0.0001, targetStop + 0.20);
+              v.source.stop(targetStop + 0.22);
+            }
+          } catch (e) {}
         } else {
-          v.gain.gain.cancelScheduledValues(now);
-          v.gain.gain.setValueAtTime(Math.max(0.001, v.gain.gain.value), now);
-          v.gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
-          try { v.osc.stop(now + 0.12); } catch (e) {}
+          try {
+            v.gain.gain.cancelScheduledValues(targetStop);
+            v.gain.gain.setValueAtTime(Math.max(0.001, v.voiceGain || 0.2), targetStop);
+            v.gain.gain.exponentialRampToValueAtTime(0.0001, targetStop + 0.12);
+            v.osc.stop(targetStop + 0.14);
+          } catch (e) {}
         }
         this.activeMidiVoices.splice(i, 1);
       }
@@ -793,9 +960,10 @@ class CeremonyAudioEngine {
   }
 
   pauseMidi() {
-    this.midiTimeouts.forEach(t => clearTimeout(t));
-    this.midiTimeouts = [];
-    clearInterval(this.midiInterval);
+    if (this.midiSchedulerTimer) clearInterval(this.midiSchedulerTimer);
+    if (this.midiProgressTimer) clearInterval(this.midiProgressTimer);
+    this.midiSchedulerTimer = null;
+    this.midiProgressTimer = null;
     this.silenceActiveVoices();
   }
 
@@ -808,11 +976,13 @@ class CeremonyAudioEngine {
   }
 
   stopMidi() {
-    this.midiTimeouts.forEach(t => clearTimeout(t));
-    this.midiTimeouts = [];
-    clearInterval(this.midiInterval);
+    if (this.midiSchedulerTimer) clearInterval(this.midiSchedulerTimer);
+    if (this.midiProgressTimer) clearInterval(this.midiProgressTimer);
+    this.midiSchedulerTimer = null;
+    this.midiProgressTimer = null;
     this.silenceActiveVoices();
     this.midiCurrentTime = 0;
+    this.nextMidiEventIndex = 0;
   }
 
   silenceActiveVoices() {
@@ -820,6 +990,7 @@ class CeremonyAudioEngine {
     const now = this.audioCtx.currentTime;
     this.activeMidiVoices.forEach(v => {
       try {
+        v.gain.gain.cancelScheduledValues(now);
         v.gain.gain.setValueAtTime(0.0001, now);
         if (v.isBuffer) v.source.stop(now + 0.02);
         else v.osc.stop(now + 0.02);
@@ -839,5 +1010,5 @@ class CeremonyAudioEngine {
   }
 }
 
-// Global instance
+// Inisialisasi Singleton Audio Engine Global
 window.ceremonyAudio = new CeremonyAudioEngine();

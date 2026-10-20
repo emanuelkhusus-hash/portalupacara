@@ -883,6 +883,9 @@ function updatePlaybackStateUI(isPlaying) {
     const isThisItem = item.id === `songItem_${state.activeSongId}`;
     if (isThisItem && isPlaying) {
       item.classList.add('active-playing');
+      try {
+        item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {}
     } else {
       item.classList.remove('active-playing');
     }
