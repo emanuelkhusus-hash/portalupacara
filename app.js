@@ -33,12 +33,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ==========================================
-// Service Worker (PWA Offline Support)
+// Service Worker (PWA Offline Support & Auto-Update UI)
 // ==========================================
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('ServiceWorker registered:', reg.scope))
+      .then(reg => {
+        console.log('ServiceWorker registered:', reg.scope);
+        // Otomatis cek pembaruan tampilan setiap kali aplikasi dibuka
+        if (navigator.onLine) {
+          reg.update();
+        }
+        reg.onupdatefound = () => {
+          const installing = reg.installing;
+          if (installing) {
+            installing.onstatechange = () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('Tampilan versi baru telah terpasang.');
+                showToast('✨ Tampilan baru diperbarui secara otomatis!');
+              }
+            };
+          }
+        };
+      })
       .catch(err => console.log('ServiceWorker error:', err));
   }
 }
