@@ -69,15 +69,48 @@ function initNetworkStatus() {
 // ==========================================
 // Sumber Katalog Lagu (Lokal songs.json atau GitHub Repo CDN)
 // ==========================================
+const DEFAULT_SONG_SOURCE = 'https://cdn.jsdelivr.net/gh/emanuelkhusus-hash/upacarasong@main/songs.json';
+const FALLBACK_SONG_SOURCE = 'https://emanuelkhusus-hash.github.io/upacarasong/songs.json';
+
+function normalizeCatalogUrl(url) {
+  if (!url) return DEFAULT_SONG_SOURCE;
+  let u = url.trim();
+  if (u === '' || u === 'songs.json') return DEFAULT_SONG_SOURCE;
+
+  // Jika dimasukkan link repo GitHub (e.g. https://github.com/owner/repo)
+  const ghMatch = u.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)/i);
+  if (ghMatch) {
+    const owner = ghMatch[1];
+    const repo = ghMatch[2].replace(/\.git$/, '');
+    return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@main/songs.json`;
+  }
+
+  // Jika dimasukkan URL github.io (e.g. https://owner.github.io/repo atau https://owner.github.io/repo/)
+  const ioMatch = u.match(/^https?:\/\/([^\/]+)\.github\.io\/([^\/]+)\/?$/i);
+  if (ioMatch) {
+    const owner = ioMatch[1];
+    const repo = ioMatch[2];
+    return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@main/songs.json`;
+  }
+
+  // Jika belum berakhiran .json
+  if (!u.endsWith('.json')) {
+    u = u.endsWith('/') ? `${u}songs.json` : `${u}/songs.json`;
+  }
+  return u;
+}
+
 function getCatalogSourceUrl() {
-  return localStorage.getItem('upacara_song_source_url') || 'songs.json';
+  const saved = localStorage.getItem('upacara_song_source_url');
+  return saved ? normalizeCatalogUrl(saved) : DEFAULT_SONG_SOURCE;
 }
 
 function setCatalogSourceUrl(url) {
-  if (!url || url.trim() === '' || url.trim() === 'songs.json') {
+  if (!url || url.trim() === '' || url.trim() === DEFAULT_SONG_SOURCE) {
     localStorage.removeItem('upacara_song_source_url');
   } else {
-    localStorage.setItem('upacara_song_source_url', url.trim());
+    const cleanUrl = normalizeCatalogUrl(url);
+    localStorage.setItem('upacara_song_source_url', cleanUrl);
   }
 }
 
@@ -94,11 +127,25 @@ async function reloadSongsList(isManual = false) {
   try {
     const sourceUrl = getCatalogSourceUrl();
     const sep = sourceUrl.includes('?') ? '&' : '?';
-    // Gunakan timestamp cache-buster dan header no-cache agar selalu membaca perubahan terbaru
-    const res = await fetch(`${sourceUrl}${sep}nocache=${Date.now()}`, {
-      cache: 'no-store',
-      headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
-    });
+    let res;
+    
+    try {
+      // Gunakan timestamp cache-buster dan header no-cache agar selalu membaca perubahan terbaru
+      res = await fetch(`${sourceUrl}${sep}nocache=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Pragma': 'no-cache', 'Cache-Control': 'no-cache' }
+      });
+    } catch (fetchErr) {
+      // Fallback otomatis jika CDN utama terkena batasan/jaringan
+      if (sourceUrl === DEFAULT_SONG_SOURCE) {
+        console.warn('Gagal mengakses CDN jsDelivr, mencoba fallback ke GitHub Pages:', fetchErr);
+        res = await fetch(`${FALLBACK_SONG_SOURCE}?nocache=${Date.now()}`, {
+          cache: 'no-store'
+        });
+      } else {
+        throw fetchErr;
+      }
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -844,12 +891,12 @@ function initModals() {
 
   function updateSourceModalInfo() {
     const cur = getCatalogSourceUrl();
-    if (cur === 'songs.json') {
+    if (cur === DEFAULT_SONG_SOURCE || cur === FALLBACK_SONG_SOURCE) {
       inputSourceUrl.value = '';
-      sourceStatusInfo.textContent = 'Status: Menggunakan sumber default (Lokal songs.json)';
+      sourceStatusInfo.textContent = 'Status: Menggunakan sumber default (emanuelkhusus-hash/upacarasong)';
     } else {
       inputSourceUrl.value = cur;
-      sourceStatusInfo.textContent = `Status: Terhubung ke repositori eksternal (${cur})`;
+      sourceStatusInfo.textContent = `Status: Terhubung ke repositori kustom (${cur})`;
     }
   }
 
@@ -881,7 +928,7 @@ function initModals() {
       setCatalogSourceUrl('');
       inputSourceUrl.value = '';
       modalSongSource.style.display = 'none';
-      showToast('✓ Dikembalikan ke sumber lagu lokal default.', false);
+      showToast('✓ Dikembalikan ke sumber repositori default (upacarasong).', false);
       await reloadSongsList(true);
     });
   }
