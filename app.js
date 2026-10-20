@@ -394,15 +394,70 @@ function getGoogleDriveDownloadUrl(driveId) {
   return `https://drive.usercontent.google.com/download?id=${driveId}&export=download&confirm=t`;
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 KB';
+  if (bytes < 1024 * 1024) {
+    return (bytes / 1024).toFixed(1) + ' KB';
+  }
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
 /**
- * Unduh satu lagu dan simpan ke IndexedDB
+ * Fetch stream dengan kalkulasi progress byte KB / MB
  */
-async function downloadSingleSong(songId, silent = false) {
+async function fetchWithProgress(url, onProgress) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const contentLength = response.headers.get('content-length');
+  const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+  if (!response.body) {
+    const blob = await response.blob();
+    if (onProgress) onProgress(blob.size, blob.size);
+    return blob;
+  }
+
+  const reader = response.body.getReader();
+  let received = 0;
+  const chunks = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (onProgress) {
+      onProgress(received, total);
+    }
+  }
+
+  return new Blob(chunks);
+}
+
+/**
+ * Unduh satu lagu dan simpan ke IndexedDB (dengan progress bar KB / MB)
+ */
+async function downloadSingleSong(songId, silent = false, isBatch = false, onProgressCb = null) {
   const song = state.songs.find(s => s.id === songId);
   if (!song) return false;
 
   song.isDownloading = true;
   updateSongBadgeUI(song.id, 'loading');
+
+  const progressCard = document.getElementById('batchProgressCard');
+  const progressText = document.getElementById('batchProgressText');
+  const progressSize = document.getElementById('batchProgressSize');
+  const progressPercent = document.getElementById('batchProgressPercent');
+  const progressBarFill = document.getElementById('batchProgressBarFill');
+
+  if (!isBatch && progressCard) {
+    progressCard.style.display = 'block';
+    progressText.textContent = `Mengunduh: ${song.title}...`;
+    if (progressSize) progressSize.textContent = 'Menghubungkan...';
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressBarFill) progressBarFill.style.width = '0%';
+  }
 
   const candidates = [];
   if (song.directUrl) candidates.push(song.directUrl);
@@ -417,13 +472,31 @@ async function downloadSingleSong(songId, silent = false) {
 
   for (const url of candidates) {
     try {
-      const response = await fetch(url);
-      if (response.ok) {
-        const fetched = await response.blob();
-        if (fetched && fetched.size > 200) {
-          blob = fetched;
-          break;
+      const fetched = await fetchWithProgress(url, (received, total) => {
+        const receivedStr = formatBytes(received);
+        const totalStr = total > 0 ? formatBytes(total) : '';
+        const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 50;
+
+        if (!isBatch) {
+          if (progressSize) {
+            progressSize.textContent = totalStr ? `${receivedStr} / ${totalStr}` : receivedStr;
+          }
+          if (progressPercent) {
+            progressPercent.textContent = total > 0 ? `${pct}%` : `${receivedStr}`;
+          }
+          if (progressBarFill && total > 0) {
+            progressBarFill.style.width = `${pct}%`;
+          }
         }
+
+        if (onProgressCb) {
+          onProgressCb(received, total);
+        }
+      });
+
+      if (fetched && fetched.size > 200) {
+        blob = fetched;
+        break;
       }
     } catch (e) {
       // Coba kandidat berikutnya
@@ -433,8 +506,11 @@ async function downloadSingleSong(songId, silent = false) {
   if (!blob || blob.size === 0) {
     song.isDownloading = false;
     updateSongBadgeUI(song.id, 'cloud');
+    if (!isBatch && progressCard) {
+      progressCard.style.display = 'none';
+    }
     if (!silent) {
-      alert(`Gagal mengunduh "${song.title}".\nPastikan koneksi internet aktif dan link Google Drive dapat diakses publik.`);
+      alert(`Gagal mengunduh "${song.title}".\nPastikan koneksi internet aktif.`);
     }
     return false;
   }
@@ -449,20 +525,31 @@ async function downloadSingleSong(songId, silent = false) {
     updateStorageStats();
     renderSongsList();
 
+    if (!isBatch && progressCard) {
+      progressText.textContent = `✓ "${song.title}" siap offline!`;
+      if (progressSize) progressSize.textContent = formatBytes(blob.size);
+      if (progressPercent) progressPercent.textContent = '100%';
+      if (progressBarFill) progressBarFill.style.width = '100%';
+      setTimeout(() => {
+        if (!state.isDownloadingBatch) progressCard.style.display = 'none';
+      }, 2500);
+    }
+
     if (!silent) {
-      console.log(`Lagu "${song.title}" berhasil diunduh dan disimpan offline.`);
+      showToast(`✓ "${song.title}" berhasil diunduh (${formatBytes(blob.size)}) & siap offline!`);
     }
     return true;
   } catch (dbErr) {
     console.error('IndexedDB save error:', dbErr);
     song.isDownloading = false;
     updateSongBadgeUI(song.id, 'cloud');
+    if (!isBatch && progressCard) progressCard.style.display = 'none';
     return false;
   }
 }
 
 /**
- * Unduh Semua Lagu (Batch Downloader)
+ * Unduh Semua Lagu (Batch Downloader dengan live progress KB / MB)
  */
 async function downloadAllSongs() {
   if (state.isDownloadingBatch) return;
@@ -476,6 +563,7 @@ async function downloadAllSongs() {
   state.isDownloadingBatch = true;
   const progressCard = document.getElementById('batchProgressCard');
   const progressText = document.getElementById('batchProgressText');
+  const progressSize = document.getElementById('batchProgressSize');
   const progressPercent = document.getElementById('batchProgressPercent');
   const progressBarFill = document.getElementById('batchProgressBarFill');
 
@@ -484,25 +572,34 @@ async function downloadAllSongs() {
   let completed = 0;
   for (let i = 0; i < toDownload.length; i++) {
     const s = toDownload[i];
-    const pct = Math.round((completed / toDownload.length) * 100);
     progressText.textContent = `Mengunduh (${i + 1}/${toDownload.length}): ${s.title}...`;
-    progressPercent.textContent = `${pct}%`;
-    progressBarFill.style.width = `${pct}%`;
 
-    await downloadSingleSong(s.id, true);
+    await downloadSingleSong(s.id, true, true, (received, total) => {
+      const receivedStr = formatBytes(received);
+      const totalStr = total > 0 ? formatBytes(total) : '';
+      if (progressSize) {
+        progressSize.textContent = totalStr ? `${receivedStr} / ${totalStr}` : receivedStr;
+      }
+      const fileFraction = total > 0 ? (received / total) : 0;
+      const overallPct = Math.min(99, Math.round(((i + fileFraction) / toDownload.length) * 100));
+      progressPercent.textContent = `${overallPct}%`;
+      progressBarFill.style.width = `${overallPct}%`;
+    });
     completed++;
   }
 
   progressBarFill.style.width = '100%';
   progressPercent.textContent = '100%';
   progressText.textContent = 'Semua lagu berhasil disimpan offline!';
+  if (progressSize) progressSize.textContent = 'Selesai';
 
   setTimeout(() => {
     progressCard.style.display = 'none';
     state.isDownloadingBatch = false;
     updateStorageStats();
     renderSongsList();
-  }, 1500);
+    showToast(`✓ Seluruh ${completed} lagu berhasil disimpan offline!`);
+  }, 2000);
 }
 
 async function deleteSongCache(songId) {

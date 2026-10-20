@@ -1488,3 +1488,70 @@ body {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ===================================================================
+   DOWNLOAD PROGRESS CARD (LIVE KB / MB DISPLAY)
+   =================================================================== */
+.batch-progress-card {
+  background: #1E293B;
+  border: 1px solid #3B82F6;
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.15);
+  animation: slideToastIn 0.25s ease;
+}
+
+.batch-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.batch-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #F8FAFC;
+}
+
+.batch-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.batch-size {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #38BDF8;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.batch-percent {
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #60A5FA;
+}
+
+.batch-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #0F172A;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #334155;
+}
+
+.batch-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563EB, #38BDF8);
+  border-radius: 999px;
+  transition: width 0.15s ease-out;
+}
