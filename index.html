@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Portal Instrumen Upacara - SMK Negeri 1 Giritontro</title>
+  <meta name="description" content="Portal instrumen dan pemutar musik pengiring upacara bendera SMK Negeri 1 Giritontro. Mendukung mode offline, transpose nada, equalizer, dan preset instrumen upacara.">
+  <meta name="theme-color" content="#2563EB">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563EB'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- TOP HEADER -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="header-badge-row">
+          <span class="badge-flag">🇮🇩 SMK NEGERI 1 GIRITONTRO</span>
+          <span id="networkBadge" class="badge-status online">
+            <span class="status-dot"></span>
+            <span id="networkText">Online</span>
+          </span>
+          <span id="storageBadge" class="badge-storage" title="Kapasitas Offline Tersimpan">
+            💾 <span id="storageText">0 Lagu (0 MB)</span>
+          </span>
+        </div>
+        <h1 class="header-title">Portal Instrumen Upacara</h1>
+        <p class="header-subtitle">SMK NEGERI 1 GIRITONTRO • Pengiring Audio & Koor Upacara Bendera</p>
+      </div>
+
+      <div class="header-actions">
+        <button id="btnDownloadAll" class="btn btn-primary" title="Unduh semua lagu agar siap digunakan tanpa internet">
+          <svg viewBox="0 0 24 24" class="btn-icon"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          <span>Unduh Semua Offline</span>
+        </button>
+
+        <button id="btnOpenGuide" class="btn btn-icon-only" title="Panduan Penggunaan & GitHub Pages">
+          <svg viewBox="0 0 24 24" class="btn-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- KONSOL PENGATUR SUARA UPACARA (HARMONIS, RAPI, TIDAK BELANG) -->
+    <div class="card console-card">
+      
+      <!-- BARIS 1: INSTRUMEN SOUNDFONT (HORIZONTAL SWIPE BAR) -->
+      <div class="console-section">
+        <div class="console-section-header">
+          <span class="section-title-sm">
+            <svg viewBox="0 0 24 24" class="icon-inline"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            Karakter Suara Instrumen Upacara (General MIDI):
+          </span>
+          <span class="card-badge" id="activeInstrumentLabel">Mode: Original</span>
+        </div>
+
+        <div class="chips-scroll-wrapper" id="instrumentChips">
+          <button class="chip active" data-mode="original">Original</button>
+          <button class="chip" data-mode="0">🎹 Piano</button>
+          <button class="chip" data-mode="19">⛪ Organ Church</button>
+          <button class="chip" data-mode="48">🎻 Strings</button>
+          <button class="chip" data-mode="56">🎺 Trumpet</button>
+          <button class="chip" data-mode="-1">👑 Megah (Strings+Brass)</button>
+          <button class="chip" data-mode="-2">🥁 Marching Brass</button>
+          <button class="chip" data-mode="-3">🏛️ Simfoni Upacara</button>
+          <button class="chip" data-mode="-4">⚜️ Fanfare</button>
+        </div>
+      </div>
+
+      <!-- BARIS 2: DUA KOLOM SEIMBANG (TRANSPOSE & EQUALIZER 3-BAND) -->
+      <div class="console-tools-row">
+        
+        <!-- KOLOM 1: TRANSPOSE NADA -->
+        <div class="tool-subpanel subpanel-transpose">
+          <div class="subpanel-header">
+            <span class="subpanel-title">
+              <svg viewBox="0 0 24 24" class="icon-sub"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+              Transpose Kunci Nada
+            </span>
+            <button id="btnTransposeReset" class="btn-ghost-xs">Reset (0)</button>
+          </div>
+
+          <div class="transpose-box">
+            <button id="btnMinus" class="btn-transpose-step" title="Turun 1 Semitone (-1)">
+              <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+            </button>
+            <div class="transpose-display">
+              <span id="tvPitchLabel" class="transpose-val">Transpose: 0</span>
+              <span id="tvPitchDetail" class="transpose-sub">Nada Asli (1.00x)</span>
+            </div>
+            <button id="btnPlus" class="btn-transpose-step" title="Naik 1 Semitone (+1)">
+              <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- KOLOM 2: EQUALIZER 3-BAND LAPANGAN -->
+        <div class="tool-subpanel subpanel-eq">
+          <div class="subpanel-header">
+            <span class="subpanel-title">
+              <svg viewBox="0 0 24 24" class="icon-sub"><path d="M10 20h4V4h-4v16zm-6 0h4v-8H4v8zM16 9v11h4V9h-4z"/></svg>
+              Equalizer Suara Lapangan
+            </span>
+            <button id="btnEqReset" class="btn-ghost-xs">Reset (0 dB)</button>
+          </div>
+
+          <div class="eq-sliders-compact">
+            <!-- LOW -->
+            <div class="eq-col">
+              <div class="eq-meta-compact">
+                <span class="eq-name eq-low">LOW</span>
+                <span id="tvEqLowVal" class="eq-db">0 dB</span>
+              </div>
+              <input type="range" id="sbEqLow" class="eq-slider slider-low" min="0" max="2000" value="1000" step="1">
+              <span class="eq-hz">200 Hz</span>
+            </div>
+
+            <!-- MID -->
+            <div class="eq-col">
+              <div class="eq-meta-compact">
+                <span class="eq-name eq-mid">MID</span>
+                <span id="tvEqMidVal" class="eq-db">0 dB</span>
+              </div>
+              <input type="range" id="sbEqMid" class="eq-slider slider-mid" min="0" max="2000" value="1000" step="1">
+              <span class="eq-hz">1 kHz</span>
+            </div>
+
+            <!-- HIGH -->
+            <div class="eq-col">
+              <div class="eq-meta-compact">
+                <span class="eq-name eq-high">HIGH</span>
+                <span id="tvEqHighVal" class="eq-db">0 dB</span>
+              </div>
+              <input type="range" id="sbEqHigh" class="eq-slider slider-high" min="0" max="2000" value="1000" step="1">
+              <span class="eq-hz">3.5 kHz</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- NOW PLAYING MASTER DOCK (STICKY CONTROLLER) -->
+    <div id="nowPlayingDock" class="now-playing-dock">
+      <div class="dock-left">
+        <div class="track-disc" id="trackDisc">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/></svg>
+        </div>
+        <div class="track-details">
+          <h3 id="npSongTitle" class="track-title">Pilih lagu untuk memulai upacara</h3>
+          <p id="npSongSubtitle" class="track-subtitle">Siap memutar audio dengan kualitas jernih</p>
+        </div>
+      </div>
+
+      <div class="dock-center">
+        <!-- Visualizer Bar -->
+        <canvas id="visualizerCanvas" width="160" height="18" class="visualizer-canvas"></canvas>
+
+        <div class="playback-timeline">
+          <span id="tvPlaybackCurrent" class="time-label">00:00</span>
+          <div class="timeline-slider-wrap">
+            <input type="range" id="masterSeekbar" class="timeline-slider" min="0" max="100" value="0" step="0.1">
+          </div>
+          <span id="tvPlaybackDuration" class="time-label">00:00</span>
+        </div>
+      </div>
+
+      <div class="dock-right">
+        <!-- Volume slider -->
+        <div class="volume-box">
+          <button id="btnMute" class="btn-icon-subtle" title="Mute / Unmute">
+            <svg id="iconVolume" viewBox="0 0 24 24" class="vol-icon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+          </button>
+          <input type="range" id="masterVolume" class="volume-slider" min="0" max="1" step="0.01" value="1" title="Volume Suara">
+        </div>
+
+        <button id="btnMasterStop" class="btn btn-danger-solid" title="Hentikan pemutaran seketika">
+          <svg viewBox="0 0 24 24" class="btn-icon"><path d="M6 6h12v12H6z"/></svg>
+          <span>STOP</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- DAFTAR LAGU UPACARA (LIST BERSIH, TERSTRUKTUR, TIDAK BERANTAKAN) -->
+    <section class="card songs-section">
+      <div class="songs-section-header">
+        <div class="title-meta">
+          <div class="title-with-icon">
+            <svg viewBox="0 0 24 24" class="icon-title"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+            <h2 class="card-title">Daftar Lagu Upacara</h2>
+          </div>
+          <p class="section-desc">Pilih lagu untuk mengiringi jalannya upacara. Lagu berlogo hijau <strong>✓ Siap Offline</strong> dapat diputar tanpa kuota internet.</p>
+        </div>
+
+        <div class="songs-header-buttons">
+          <button id="btnSongSource" class="btn btn-outline-sm" title="Pilih / ganti sumber repositori lagu (GitHub CDN / Lokal)">
+            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span>Sumber Lagu</span>
+          </button>
+          <button id="btnReloadSongs" class="btn btn-outline-sm btn-reload-songs" title="Muat ulang dan segarkan katalog lagu">
+            <svg viewBox="0 0 24 24" class="btn-icon icon-reload"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            <span>Reload List</span>
+          </button>
+        </div>
+      </div>
+
+        <!-- Toolbar Pencarian & Filter Kategori -->
+        <div class="songs-toolbar">
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" class="search-icon"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="text" id="inputSearch" class="search-input" placeholder="Cari judul lagu...">
+            <button id="btnClearSearch" class="btn-clear-search" style="display:none;">&times;</button>
+          </div>
+
+          <div class="filter-tabs" id="categoryTabs">
+            <button class="filter-tab active" data-cat="all">Semua</button>
+            <button class="filter-tab" data-cat="Upacara Wajib">Upacara Wajib</button>
+            <button class="filter-tab" data-cat="Lagu Nasional">Lagu Nasional</button>
+            <button class="filter-tab" data-cat="Hymne & Mars">Hymne & Mars</button>
+            <button class="filter-tab" data-cat="Pemanasan Vokal">Pemanasan Vokal</button>
+            <button class="filter-tab" data-cat="Lagu Pilihan">Lagu Pilihan</button>
+            <button class="filter-tab" data-cat="offline">💾 Offline Saja</button>
+          </div>
+        </div>
+
+      <!-- Batch Download Progress bar -->
+      <div id="batchProgressCard" class="batch-progress-card" style="display: none;">
+        <div class="batch-progress-info">
+          <span id="batchProgressText" class="batch-title">Sedang mengunduh lagu untuk offline...</span>
+          <span id="batchProgressPercent" class="batch-percent">0%</span>
+        </div>
+        <div class="batch-progress-bar">
+          <div id="batchProgressBarFill" class="batch-bar-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <!-- LIST TABEL DAFTAR LAGU -->
+      <div class="songs-list" id="songsListContainer">
+        <!-- Di-render oleh app.js -->
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Memuat katalog lagu upacara...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p><strong>Upacara Player</strong> • Dibuat khusus untuk pengiring upacara bendera dan paduan suara sekolah.</p>
+        <p class="footer-links">
+          <button id="btnFooterGuide" class="link-btn">Petunjuk Hosting GitHub Pages</button>
+          <span>•</span>
+          <button id="btnClearStorage" class="link-btn text-danger">Bersihkan Cache Audio</button>
+        </p>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- MODAL: PANDUAN PENGGUNAAN & GITHUB PAGES -->
+  <div id="modalGuide" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Panduan Hosting GitHub Pages</h3>
+        <button id="btnCloseGuide" class="modal-close">&times;</button>
+      </div>
+
+      <div class="modal-body modal-scroll">
+        <section class="guide-step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Bagaimana Cara Kerja Download & Offline Cache?</h4>
+            <p>
+              Cukup tekan tombol <strong>"Unduh Semua Offline"</strong> di bagian atas. Seluruh berkas audio akan diunduh dan disimpan ke memori penyimpanan lokal browser (IndexedDB).
+            </p>
+            <p>
+              Setelah status berubah menjadi <span class="badge-tag tag-offline">✓ Siap Offline</span>, lagu tersebut <strong>tidak perlu didownload ulang</strong> dan dapat diputar meskipun laptop/HP Anda <strong>tidak terhubung ke internet sama sekali</strong> di lapangan upacara!
+            </p>
+          </div>
+        </section>
+
+        <section class="guide-step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Cara Mengunggah ke GitHub Pages</h4>
+            <ol>
+              <li>Buat repository baru di GitHub (misal: <code>upacara-player</code>).</li>
+              <li>Upload folder <code>audio/</code>, <code>soundfonts/</code>, dan semua file web (<code>index.html</code>, <code>style.css</code>, <code>app.js</code>, <code>audio-engine.js</code>, <code>db.js</code>, <code>songs.json</code>, <code>sw.js</code>, <code>manifest.json</code>).</li>
+              <li>Buka <strong>Settings</strong> di GitHub &rarr; menu <strong>Pages</strong>.</li>
+              <li>Pilih branch <strong>main</strong> dan folder <strong>/ (root)</strong> &rarr; Klik <strong>Save</strong>.</li>
+              <li>Website siap diakses di <code>https://username.github.io/upacara-player</code>!</li>
+            </ol>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnCloseGuideBtn" class="btn btn-primary">Mengerti & Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SUMBER REPOSITORI LAGU -->
+  <div id="modalSongSource" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">🌐 Sumber Repositori Lagu</h3>
+        <button id="btnCloseSongSource" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">
+          Anda dapat menghubungkan katalog lagu ke repositori GitHub pribadi/sekolah (via jsDelivr CDN atau GitHub Raw) agar pembaruan lagu otomatis tersinkronisasi.
+        </p>
+
+        <div class="form-group" style="display: flex; flex-direction: column; gap: 8px;">
+          <label for="inputSourceUrl" style="font-size: 0.82rem; font-weight: 600; color: #94a3b8;">URL songs.json Repositori</label>
+          <input type="url" id="inputSourceUrl" class="form-input" style="padding: 10px 12px; background: #0f172a; border: 1px solid #27354f; color: #f8fafc; border-radius: 8px; font-family: monospace; font-size: 0.82rem;" placeholder="https://cdn.jsdelivr.net/gh/USERNAME/REPO@main/songs.json">
+          <span style="font-size: 0.72rem; color: #64748b;">
+            Default lokal: <code>songs.json</code>. Contoh CDN: <code>https://cdn.jsdelivr.net/gh/smkn1giritontro/upacara-songs@main/songs.json</code>
+          </span>
+        </div>
+
+        <div id="sourceStatusInfo" style="font-size: 0.8rem; color: #38bdf8; padding: 8px 12px; background: rgba(56, 189, 248, 0.1); border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.2); margin-top: 6px;">
+          Status: Menggunakan sumber default (Lokal)
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; gap: 10px;">
+        <button id="btnResetDefaultSource" class="btn btn-outline-sm">Gunakan Lokal (Default)</button>
+        <button id="btnSaveSongSource" class="btn btn-primary">Simpan & Terapkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="db.js?v=10"></script>
+  <script src="audio-engine.js?v=10"></script>
+  <script src="app.js?v=10"></script>
+</body>
+</html>
