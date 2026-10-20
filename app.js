@@ -19,6 +19,7 @@ const state = {
 // Inisialisasi Aplikasi saat Dokumen Siap
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+  initSplashScreen();
   initNetworkStatus();
   initEqualizerControls();
   initTransposeControls();
@@ -31,6 +32,55 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadInitialSongs();
   updateStorageStats();
 });
+
+// ==========================================
+// Splash Screen Branding (Durasi 3 Detik & Tombol Lewati)
+// ==========================================
+function initSplashScreen() {
+  const splash = document.getElementById('splashScreen');
+  const btnClose = document.getElementById('btnSplashClose');
+  const countdownEl = document.getElementById('splashCountdown');
+  const progressFill = document.getElementById('splashProgressFill');
+  if (!splash) return;
+
+  let remaining = 3;
+  let isClosed = false;
+
+  function closeSplash() {
+    if (isClosed) return;
+    isClosed = true;
+    splash.classList.add('hidden');
+    setTimeout(() => {
+      splash.style.display = 'none';
+    }, 400);
+  }
+
+  // Mulai animasi progress bar linear 3 detik
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      if (progressFill) progressFill.style.width = '100%';
+    }, 50);
+  });
+
+  // Countdown timer setiap detik: 3 -> 2 -> 1 -> close
+  const timer = setInterval(() => {
+    remaining--;
+    if (countdownEl) {
+      countdownEl.textContent = Math.max(0, remaining);
+    }
+    if (remaining <= 0) {
+      clearInterval(timer);
+      closeSplash();
+    }
+  }, 1000);
+
+  if (btnClose) {
+    btnClose.addEventListener('click', () => {
+      clearInterval(timer);
+      closeSplash();
+    });
+  }
+}
 
 // ==========================================
 // Service Worker (PWA Offline Support & Auto-Update UI)
